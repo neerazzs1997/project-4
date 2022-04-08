@@ -1,6 +1,6 @@
 //  const mongoose = require("mongoose")
 const UrlModel = require("../models/UrlModel");
-const validUrl = require("valid-url");
+// const validUrl = require("valid-url");
 const shortid = require("shortid");
 const redis = require("redis")
 const { promisify } = require("util");
@@ -16,12 +16,16 @@ const isValid = function (value) {
   }
 };
 
+
+
 isvalidRequesbody = function (requestbody) {
   if (Object.keys(requestbody).length > 0) {
     return true;
   }
 };
 
+
+// // set a baseURL
 const baseUrl = "http:localhost:3000";
 
 
@@ -40,74 +44,87 @@ redisClient.on("connect", async function () {
 });
 
 
+
 // // Connection setup for redis
 const SET_ASYNC = promisify(redisClient.SET).bind(redisClient);
 const GET_ASYNC = promisify(redisClient.GET).bind(redisClient);
 
 
-
-const createUrl = async function (req, res) {
-  try {
-    const requestbody = req.body;
-
-    if (!isvalidRequesbody(requestbody)) {
-      return res
-        .status(400)
-        .send({ status: false, msg: "please provide some data" });
-    }
-
-    const { longUrl } = requestbody;
-
-    if (!isValid(longUrl)) {
-      return res
-        .status(400)
-        .send({ status: false, msg: "please provide longUrl" });
-    }
-
-    // // check the base url here
-    // if (!validUrl.isWebUri(baseUrl)) {
-    //   return res.status(401).send("Invalid base URL");
-    // }
-
-    // // now we generate the urlcode
-    const urlCode = shortid.generate();
-
-    if (validUrl.isWebUri(longUrl)) {
-      /* The findOne() provides a match to only the subset of the documents 
-            in the collection that match the query. In this case, before creating the short URL,
-            we check if the long URL was in the DB ,else we create it.
-            */
-
-      let url = await UrlModel.findOne({ longUrl });
-
-      
-      // url exist and return the respose
-      if (url) {
-        return res.send(url);
-      } else {
-        // join the generated short code the  base url
-        const shortUrl = baseUrl + "/" + urlCode;
-
-        // invoking the Url model and saving to the DB
-        url = new UrlModel({
-          longUrl,
-          shortUrl,
-          urlCode,
-          date: new Date(),
-        });
-        await url.save();
-
-        // // setting in cache --> new entries
-        // await SET_ASYNC(`${urlCode}`, JSON.stringify(urlCode));
-        // await SET_ASYNC(`${longUrl}`, JSON.stringify(longUrl));
-
-        return res.status(200).send({ data: url });
-      } 
-    }
-  } catch (err) {
-    return res.status(500).send({ status: true, error: err.message });
+const validUrl = (value) => {
+  if (!(/(ftp|http|https|FTP|HTTP|HTTPS):\/\/(\w+:{0,1}\w*@)?(\S+)(:[0-9]+)?(\/|\/([\w#!:.?+=&%@!\-/]))?/.test(value.trim()))) {
+      return false
   }
-};
+      return true
+}
+
+
+
+const createUrl = async (req, res) => {
+  try {
+      const baseUrl = "http://localhost:3000";
+      
+      if (Object.entries(req.body).length == 0 || Object.entries(req.body).length > 1) {
+          return res.status(400).send({ status: false, Message: "Invalid Request Params" });
+      }
+  
+      if(!req.body.hasOwnProperty('longUrl')) {
+          return res.status(400).send({ Status: false, Message: "Wrong Key Present" })
+      }
+      
+      const { longUrl } = req.body;
+      //wih The help of Object distucturing we can store the Ojects proporties in a Distinct Variable
+  
+      if(!longUrl) {
+          return res.status(400).send({ Status : false, Message: "Url Is Required" })
+      }
+  
+      if (!validUrl(baseUrl)) {
+          return res.status(400).send({ status: false, Message: "invalid Base Url" });
+      }
+  
+      if (!validUrl(longUrl)) {
+          return res.status(400).send({ status: false, Message: "Invalid Long Url" });
+      }
+      //
+      const cahcedUrlData = await GET_ASYNC(`${longUrl}`)
+          if (cahcedUrlData) {
+              return res.status(200).send({ status: "true", data: cahcedUrlData })
+          }
+  
+      let isUrlExist = await UrlModel.findOne({ longUrl }).select({longUrl : 1, urlCode : 1, shortUrl: 1, _id: 0});
+      if (isUrlExist) {
+      //
+          await SET_ASYNC(`${longUrl}`, JSON.stringify(isUrlExist))
+  
+          return res.status(201).send({ status: true, Message: "Success", Data: isUrlExist });
+      }
+  
+      
+      const urlCode = nanoid.nanoid().toLowerCase();      
+  
+      const shortUrl = baseUrl + "/" + urlCode;
+      shortUrl.toLowerCase();
+  
+      const urlData = {
+          longUrl,
+          shortUrl : shortUrl.trim(),
+          urlCode,
+      };
+  
+      let newUrl = await UrlModel.create(urlData)
+  
+      let finalData = {
+          urlCode : newUrl.urlCode,
+          longUrl : newUrl.longUrl,
+          shortUrl: newUrl.shortUrl
+      }
+      return res.status(201).send({ status: true, Message: "success", Data: finalData });
+  
+  } catch (error) {
+      res.status(500).send({ status: false, Err: error.message });
+  }
+  };
+
 
 
 
@@ -124,6 +141,7 @@ const getUrl = async function (req, res) {
     return res.status(500).send({ status: false, msg: "server error" });
   }
 };
+
 
 
 
@@ -146,6 +164,9 @@ const getUrl = async function (req, res) {
     }
   };
 
+  
 module.exports.createUrl = createUrl
 module.exports.getUrl = getUrl
 module.exports.redisUrlCode = redisUrlCode;
+
+
