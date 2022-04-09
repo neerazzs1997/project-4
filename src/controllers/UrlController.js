@@ -1,9 +1,8 @@
-//  const mongoose = require("mongoose")
 const UrlModel = require("../models/UrlModel");
-// const validUrl = require("valid-url");
 const shortid = require("shortid");
 const redis = require("redis")
 const { promisify } = require("util");
+
 
 
 const isValid = function (value) {
@@ -18,15 +17,13 @@ const isValid = function (value) {
 
 
 
+
 isvalidRequesbody = function (requestbody) {
   if (Object.keys(requestbody).length > 0) {
     return true;
   }
 };
 
-
-// // set a baseURL
-const baseUrl = "http:localhost:3000";
 
 
 //Connect to redis
@@ -45,11 +42,15 @@ redisClient.on("connect", async function () {
 
 
 
+
+
 // // Connection setup for redis
 const SET_ASYNC = promisify(redisClient.SET).bind(redisClient);
 const GET_ASYNC = promisify(redisClient.GET).bind(redisClient);
 
 
+
+// // Rejex of Longurl
 const validUrl = (value) => {
   if (!(/(ftp|http|https|FTP|HTTP|HTTPS):\/\/(\w+:{0,1}\w*@)?(\S+)(:[0-9]+)?(\/|\/([\w#!:.?+=&%@!\-/]))?/.test(value.trim()))) {
       return false
@@ -59,32 +60,30 @@ const validUrl = (value) => {
 
 
 
+
+// // 
 const createUrl = async (req, res) => {
   try {
+    let requestbody = req.body
+
+    const { longUrl } = requestbody;
+
       const baseUrl = "http://localhost:3000";
-      
-      if (Object.entries(req.body).length == 0 || Object.entries(req.body).length > 1) {
-          return res.status(400).send({ status: false, Message: "Invalid Request Params" });
+        
+
+      if(!isvalidRequesbody(requestbody)){
+        return res.status(404).send({status:false, msg:"not found data"})
       }
   
-      if(!req.body.hasOwnProperty('longUrl')) {
-          return res.status(400).send({ Status: false, Message: "Wrong Key Present" })
-      }
-      
-      const { longUrl } = req.body;
-      //wih The help of Object distucturing we can store the Ojects proporties in a Distinct Variable
   
-      if(!longUrl) {
+      if(!isValid(longUrl)) {
           return res.status(400).send({ Status : false, Message: "Url Is Required" })
-      }
-  
-      if (!validUrl(baseUrl)) {
-          return res.status(400).send({ status: false, Message: "invalid Base Url" });
       }
   
       if (!validUrl(longUrl)) {
           return res.status(400).send({ status: false, Message: "Invalid Long Url" });
       }
+
       //
       const cahcedUrlData = await GET_ASYNC(`${longUrl}`)
           if (cahcedUrlData) {
@@ -99,15 +98,17 @@ const createUrl = async (req, res) => {
           return res.status(201).send({ status: true, Message: "Success", Data: isUrlExist });
       }
   
-      
-      const urlCode = nanoid.nanoid().toLowerCase();      
+
+      // // Generate out urlcode
+      const urlCode = shortid.generate()      
   
-      const shortUrl = baseUrl + "/" + urlCode;
+    
+      const shortUrl = baseUrl + "/" + urlCode;          
       shortUrl.toLowerCase();
   
       const urlData = {
           longUrl,
-          shortUrl : shortUrl.trim(),
+          shortUrl,
           urlCode,
       };
   
@@ -128,15 +129,16 @@ const createUrl = async (req, res) => {
 
 
 
+
 const getUrl = async function (req, res) {
   try {
+    
     const url = await UrlModel.findOne({urlCode:req.params.urlCode})
     if(url){
       return res.status(302).redirect(url.longUrl)
     }else{
-      return res.status(400).send({status:false ,msg:"No url Found"})
+      return res.status(404).send({status:false ,msg:"No url Found"})
     }
-
   } catch (error) {
     return res.status(500).send({ status: false, msg: "server error" });
   }
@@ -164,6 +166,7 @@ const getUrl = async function (req, res) {
     }
   };
 
+  
   
 module.exports.createUrl = createUrl
 module.exports.getUrl = getUrl
